@@ -165,9 +165,9 @@ def main(argv):
                     dateMatch = is_date_between(
                         currProject.created, beforeDate, afterDate
                     )
-                except:
+                except Exception as exc:
                     print(
-                        "error processing before/after datetimes, please check your format"
+                        f"error processing before/after datetimes, please check your format: {exc}"
                     )
                     sys.exit(2)
                 # nameMatch validation
@@ -224,8 +224,8 @@ def main(argv):
                             else:
                                 currProject.deactivate()
                         spinner.ok("✅ ")
-                    except exception as e:
-                        spinner.fail("💥 ")
+                    except Exception as e:
+                        spinner.fail(f"💥 {e}")
                 # delete non-active project if filters are meet
                 if (
                     scaTypeMatch
@@ -249,8 +249,8 @@ def main(argv):
                         if not dryrun:
                             currProject.delete()
                         spinner.ok("✅ ")
-                    except exception as e:
-                        spinner.fail("💥 ")
+                    except Exception as e:
+                        spinner.fail(f"💥 {e}")
             # if org is empty and --delete-empty-org flag is on
             if len(currOrg.projects.all()) == 0 and deleteorgs:
                 spinner = yaspin(
@@ -265,8 +265,8 @@ def main(argv):
                         client.delete(f"org/{currOrg.id}")
                     spinner.ok("✅ ")
                     spinner.stop()
-                except:
-                    spinner.fail("💥 ")
+                except Exception as e:
+                    spinner.fail(f"💥 {e}")
                     spinner.stop()
     # process input orgs which didnt have a match
     if len(inputOrgs) != 0:
