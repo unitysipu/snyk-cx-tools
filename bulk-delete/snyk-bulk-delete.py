@@ -1,23 +1,59 @@
-import sys, getopt, os, snyk
-from yaspin import yaspin
-from helperFunctions import *
-import time
+import getopt
+import os
+import sys
 from datetime import datetime
 
+import snyk
+import snyk.errors
+from yaspin import yaspin
 
-helpString = """--help : Returns this page \n--force : By default this script will perform a dry run, add this flag to actually apply changes\n--delete : By default this script will deactivate projects, add this flag to delete active projects instead \n--delete-non-active-projects : By default this script will deactivate projects, add this flag to delete non-active projects instead (if this flag is present only non-active projects will be deleted) \n--origins : Defines origin types of projects to delete\n--orgs : A set of orgs upon which to perform delete,be sure to use org slug instead of org display name (use ! for all orgs)\n--scatypes : Defines SCA type/s of projects to deletes \n--products : Defines product/s types of projects to delete\n--delete-empty-orgs : This will delete all orgs that do not have any projects in them \n* Please replace spaces with dashes(-) when entering orgs \n* If entering multiple values use the following format: "value-1 value-2 value-3" \n--after : Only delete projects that were created after a certain date time (in ISO 8601 format, i.e 2023-09-01T00:00:00.000Z)\n--after : Only delete projects that were created before a certain date time (in ISO 8601 format, i.e 2023-09-01T00:00:00.000Z)\n--ignore-keys : An array of key's, if any of these key's are present in a project name then that project will not be targeted for deletion/deactivation
-            """
+from helperFunctions import convertTypeToProduct
+
+helpString = """
+
+--help : Returns this page
+
+--force : By default this script will perform a dry run, add this flag to actually apply changes
+
+--delete : By default this script will deactivate projects, add this flag to delete active projects instead
+
+--delete-non-active-projects : By default this script will deactivate projects, add this flag to delete non-active projects instead
+(if this flag is present only non-active projects will be deleted)
+
+--origins : Defines origin types of projects to delete
+
+--orgs : A set of orgs upon which to perform delete,be sure to use org slug instead of org display name (use ! for all orgs)
+
+--scatypes : Defines SCA type/s of projects to deletes
+
+--products : Defines product/s types of projects to delete
+
+--delete-empty-orgs : This will delete all orgs that do not have any projects in them
+    * Please replace spaces with dashes(-) when entering orgs
+    * If entering multiple values use the following format: "value-1 value-2 value-3"
+
+--after : Only delete projects that were created after a certain date time (in ISO 8601 format, i.e 2023-09-01T00:00:00.000Z)
+
+--ignore-keys : An array of key's, if any of these key's are present in a project name then that project will not be targeted for deletion/deactivation
+"""
 
 # get all user orgs and verify snyk API token
 userOrgs = []
-client = snyk.SnykClient(os.getenv("SNYK_TOKEN"))
+snyk_token = os.getenv("SNYK_TOKEN", "")
+if not snyk_token:
+    print("Please set your SNYK_TOKEN as an environment variable")
+    print(helpString)
+    sys.exit(1)
+
 try:
-    userOrgs = client.organizations.all()
+    client = snyk.SnykClient(token=snyk_token)
+    userOrgs = client.organizations.all() or []
 except snyk.errors.SnykHTTPError as err:
     print(
-        "💥 Ran into an error while fetching account details, please check your API token"
+        f"💥 Ran into an error while fetching account details, please check your API token: {vars(err)}"
     )
     print(helpString)
+    sys.exit(1)
 
 
 def is_date_between(curr_date_str, before_date_str, after_date_str):
