@@ -48,7 +48,7 @@ def is_date_between(curr_date_str, before_date_str, after_date_str):
     return True
 
 
-def main(argv):
+def main(argv):  # pylint: disable=too-many-statements
     inputOrgs = []
     products = []
     scaTypes = []
@@ -63,7 +63,7 @@ def main(argv):
 
     # valid input arguments declared here
     try:
-        opts, args = getopt.getopt(
+        opts, _ = getopt.getopt(
             argv,
             "hofd",
             [
@@ -136,7 +136,7 @@ def main(argv):
         )
 
     # delete functionality
-    for currOrg in userOrgs:
+    for currOrg in userOrgs:  # pylint: disable=too-many-nested-blocks
 
         # if curr org is in list of orgs to process
         if currOrg.slug in inputOrgs:
