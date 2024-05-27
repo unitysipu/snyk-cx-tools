@@ -1,5 +1,5 @@
 # converts API types into a snyk product
-def convertTypeToProduct(inputType):
+def convertTypeToProduct(inputType: str) -> str:
     containerTypes = ["deb", "linux", "dockerfile", "rpm", "apk"]
     iacTypes = [
         "k8sconfig",
@@ -16,4 +16,5 @@ def convertTypeToProduct(inputType):
         return "iac"
     if inputType in codeTypes:
         return "sast"
+    print(f"Unknown type: {inputType}, assuming opensource.")
     return "opensource"

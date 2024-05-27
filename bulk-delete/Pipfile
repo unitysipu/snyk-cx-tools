@@ -6,6 +6,7 @@ name = "pypi"
 [packages]
 pysnyk = "*"
 yaspin = "*"
+coloredlogs = "*"
 
 [dev-packages]
 black = "*"
