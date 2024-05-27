@@ -1,7 +1,13 @@
-#converts API types into a snyk product
+# converts API types into a snyk product
 def convertTypeToProduct(inputType):
     containerTypes = ["deb", "linux", "dockerfile", "rpm", "apk"]
-    iacTypes = ["k8sconfig", "helmconfig", "terraformconfig", "armconfig", "cloudformationconfig"]
+    iacTypes = [
+        "k8sconfig",
+        "helmconfig",
+        "terraformconfig",
+        "armconfig",
+        "cloudformationconfig",
+    ]
     codeTypes = ["sast"]
 
     if inputType in containerTypes:
