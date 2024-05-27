@@ -12,9 +12,8 @@ def convertTypeToProduct(inputType):
 
     if inputType in containerTypes:
         return "container"
-    elif inputType in iacTypes:
+    if inputType in iacTypes:
         return "iac"
-    elif inputType in codeTypes:
+    if inputType in codeTypes:
         return "sast"
-    else:
-        return "opensource"
+    return "opensource"

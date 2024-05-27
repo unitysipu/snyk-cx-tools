@@ -39,13 +39,13 @@ def is_date_between(curr_date_str, before_date_str, after_date_str):
     # Check if the current date is between the before and after dates
     if before_date and after_date:
         return curr_date <= before_date and curr_date >= after_date
-    elif before_date:
+    if before_date:
         return curr_date <= before_date
-    elif after_date:
+    if after_date:
         return curr_date >= after_date
-    else:
-        # If both before and after dates are empty, return True
-        return True
+
+    # If both before and after dates are empty, return True
+    return True
 
 
 def main(argv):
