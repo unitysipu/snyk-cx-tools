@@ -9,8 +9,6 @@ import snyk
 import snyk.errors
 from yaspin import yaspin
 
-from helperFunctions import convertTypeToProduct
-
 FORMAT = "[%(asctime)s] [%(process)d:%(threadName)s] [%(levelname)s] [%(name)s.%(module)s.%(funcName)s:%(lineno)d] %(message)s"
 
 logger = logging.getLogger(__name__)
@@ -93,6 +91,44 @@ def is_date_between(curr_date_str, before_date_str, after_date_str):
 
     # If both before and after dates are empty, return True
     return True
+
+
+def convertProjectTypeToProduct(inputType: str) -> str:
+    containerTypes = ["deb", "linux", "dockerfile", "rpm", "apk"]
+    iacTypes = [
+        "k8sconfig",
+        "helmconfig",
+        "terraformconfig",
+        "armconfig",
+        "cloudformationconfig",
+    ]
+    codeTypes = ["sast"]
+    open_source_types = [
+        "gomodules",
+        "gradle",
+        "maven",
+        "npm",
+        "nuget",
+        "paket",
+        "pip",
+        "pipenv",
+        "poetry",
+        "rubygems",
+        "cocoapods",
+        "yarn",
+    ]
+
+    if inputType in containerTypes:
+        return "container"
+    if inputType in iacTypes:
+        return "iac"
+    if inputType in codeTypes:
+        return "sast"
+    if inputType in open_source_types:
+        return "opensource"
+
+    logger.warning("Unknown project type: %s", inputType)
+    return "unknown"
 
 
 def main(argv):  # pylint: disable=too-many-statements
@@ -260,7 +296,7 @@ def main(argv):  # pylint: disable=too-many-statements
                 originMatch = True
 
             # if producttypes are not declared or curr project product matches filter criteria then return true
-            currProjectProductType = convertTypeToProduct(currProject.type)
+            currProjectProductType = convertProjectTypeToProduct(currProject.type)
             if len(products) != 0:
                 if currProjectProductType in products:
                     productMatch = True
@@ -339,18 +375,6 @@ def main(argv):  # pylint: disable=too-many-statements
             except Exception as e:
                 spinner.fail(f"💥 {e}")
                 spinner.stop()
-
-    # process input orgs which didnt have a match
-    if len(inputOrgs) != 0:
-        print(
-            """
-"\033[1;32m{}\u001b[0m are organizations which do not exist or you don't have access to them,
-please check your spelling, insure that spaces are replaced with dashes,
-and that you are using org slugs rather then display names
-""".format(
-                inputOrgs
-            )
-        )
 
     if dryrun:
         print("\033[93mDRY RUN COMPLETE NOTHING DELETED")
