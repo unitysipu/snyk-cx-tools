@@ -56,6 +56,7 @@ if not snyk_token:
 try:
     client = snyk.SnykClient(token=snyk_token)
     userOrgs = client.organizations.all() or []
+    logger.info("Found organizations: %s", len(userOrgs))
 except snyk.errors.SnykHTTPError as err:
     logger.error(
         "💥 Ran into an error while fetching account details, please check your API token: %s",
@@ -104,8 +105,14 @@ def convertProjectTypeToProduct(inputType: str) -> str:
     ]
     codeTypes = ["sast"]
     open_source_types = [
+        "cocoapods",
+        "composer",
+        "cpp",
+        "golangdep",
         "gomodules",
+        "govendor",
         "gradle",
+        "hex",
         "maven",
         "npm",
         "nuget",
@@ -114,7 +121,8 @@ def convertProjectTypeToProduct(inputType: str) -> str:
         "pipenv",
         "poetry",
         "rubygems",
-        "cocoapods",
+        "sbt",
+        "swift",
         "yarn",
     ]
 
@@ -297,12 +305,11 @@ def main(argv):  # pylint: disable=too-many-statements
 
             # if producttypes are not declared or curr project product matches filter criteria then return true
             currProjectProductType = convertProjectTypeToProduct(currProject.type)
-            if len(products) != 0:
-                if currProjectProductType in products:
-                    productMatch = True
-            else:
-                if currProjectProductType not in product_excludes:
-                    productMatch = True
+
+            if (currProjectProductType in products) or (
+                currProjectProductType not in product_excludes
+            ):
+                productMatch = True
 
             # delete active project if filter are meet
             if (
