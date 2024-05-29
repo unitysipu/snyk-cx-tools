@@ -84,7 +84,10 @@ def is_date_between(curr_date_str, before_date_str, after_date_str):
 
     # Check if the current date is between the before and after dates
     if before_date and after_date:
-        return curr_date <= before_date and curr_date >= after_date
+        return (
+            curr_date <= before_date  # pylint: disable=chained-comparison
+            and curr_date >= after_date
+        )
     if before_date:
         return curr_date <= before_date
     if after_date:
@@ -252,20 +255,18 @@ def main(argv):  # pylint: disable=too-many-statements
 
         # if curr org is in list of orgs to process
         if currOrg.slug not in inputOrgs:
-            print(f"Skipping organization: {currOrg.slug} not in {inputOrgs}")
+            logger.debug("Skipping organization: %s not in %s", currOrg.slug, inputOrgs)
             continue
 
         # remove currorg for org proccesing list and print proccesing message
         # inputOrgs.remove(currOrg.slug)
-        print(
-            "Processing"
-            + """ \033[1;32m"{}" """.format(currOrg.name)
-            + "\u001b[0morganization"
+        logger.info(
+            "Processing organization: %s",
+            currOrg.slug,
         )
 
         # cycle through all projects in current org and delete projects that match filter
         for currProject in currOrg.projects.all():
-            logger.debug("Processing project: %s", currProject)
 
             # variables which determine whether project matches criteria to delete, if criteria is empty they will be defined as true
             scaTypeMatch = False
