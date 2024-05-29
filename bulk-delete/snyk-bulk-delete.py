@@ -16,6 +16,10 @@ coloredlogs.install(level="DEBUG", fmt=FORMAT)
 
 
 helpString = """
+This script will allow you to deactivate or delete projects in bulk based on a set of filters.
+set your SNYK_TOKEN as an environment variable to use this script.
+
+Usage: SNYK_TOKEN=your_token python snyk-bulk-delete.py [options]
 
 --help: Returns this page
 
@@ -26,11 +30,11 @@ helpString = """
 --delete-non-active-projects: By default this script will deactivate projects, add this flag to delete non-active projects instead
 (if this flag is present only non-active projects will be deleted)
 
---origins: Defines origin types of projects to delete
+--origins: Defines origin of projects to delete (github, github-enterprise, github-cloud-app...)
 
 --orgs: A set of orgs upon which to perform delete, be sure to use org slug instead of org display name (use ! for all orgs)
 
---sca-types: Defines file type/s of projects to delete
+--sca-types: Defines types of projects to delete (deb, linux, dockerfile, rpm, apk, npm, sast ...)
 
 --products: Defines which Snyk feature related projects to delete
              examples: sast container iac opensource
@@ -43,8 +47,16 @@ helpString = """
 
 --after: Only delete projects that were created after a certain date time (in ISO 8601 format, i.e 2023-09-01T00:00:00.000Z)
 
+--before : Only delete projects that were created before  a certain date time (in ISO 8601 format, i.e 2023-09-01T00:00:00.000Z)
+
 --ignore-keys: An array of key's, if any of these key's are present in a project name then that project will not be targeted for deletion/deactivation
 """
+
+
+if "--help" in sys.argv:
+    print(helpString)
+    sys.exit(0)
+
 
 # get all user orgs and verify snyk API token
 snyk_token = os.getenv("SNYK_TOKEN", "")
@@ -52,6 +64,7 @@ if not snyk_token:
     logger.error("💥 Please set your SNYK_TOKEN as an environment variable")
     print(helpString)
     sys.exit(1)
+
 
 try:
     client = snyk.SnykClient(token=snyk_token)
