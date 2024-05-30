@@ -3,7 +3,6 @@ import logging
 import os
 import sys
 from datetime import datetime
-from pprint import pformat, pprint
 
 import coloredlogs
 import snyk
@@ -329,17 +328,27 @@ def main(argv):  # pylint: disable=too-many-statements
             ):
                 productMatch = True
 
-            # delete active project if filter are meet
-            if (
+            # Guard clause to avoid complex conditions below
+            if not (
                 scaTypeMatch
                 and originMatch
                 and productMatch
-                and isActive
-                and not filtersEmpty
-                and not deleteNonActive
                 and dateMatch
                 and nameMatch
+                and not filtersEmpty
             ):
+                logger.debug(
+                    "Skipping unmatched project: %s, Type: %s, Origin: %s, Product: %s",
+                    currProject.name,
+                    currProject.type,
+                    currProject.origin,
+                    currProjectProductType,
+                )
+                results["projects"]["skipped"].append(currProject)
+                continue
+
+            # delete active project if filters are met
+            if isActive and not deleteNonActive:
                 currProjectDetails = f"Origin: {currProject.origin}, Type: {currProject.type}, Product: {currProjectProductType}"
                 action = "Deactivating" if deactivate else "Deleting"
                 spinner = yaspin(
@@ -350,25 +359,23 @@ def main(argv):  # pylint: disable=too-many-statements
                 )
                 spinner.start()
                 try:
-                    if not dryrun:
-                        if not deactivate:
+                    if not deactivate:
+                        if not dryrun:
                             currProject.delete()
-                        else:
+                        results["projects"]["deleted"].append(currProject)
+                    else:
+                        if not dryrun:
                             currProject.deactivate()
+                        results["projects"]["deactivated"].append(currProject)
                     spinner.ok("✅ ")
                 except Exception as e:
                     spinner.fail(f"💥 {e}")
-            # delete non-active project if filters are meet
-            if (
-                scaTypeMatch
-                and originMatch
-                and productMatch
-                and (not isActive)
-                and deleteNonActive
-                and not filtersEmpty
-                and dateMatch
-                and nameMatch
-            ):
+                    results["projects"]["failed"].append(currProject)
+                finally:
+                    spinner.stop()
+
+            # delete non-active project if filters are met
+            if not isActive and deleteNonActive:
                 currProjectDetails = f"Origin: {currProject.origin}, Type: {currProject.type}, Product: {currProjectProductType}"
                 spinner = yaspin(
                     text=f"Deleting\033[1;32m {currProject.name}", color="yellow"
