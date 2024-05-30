@@ -3,6 +3,7 @@ import logging
 import os
 import sys
 from datetime import datetime
+from pprint import pformat, pprint
 
 import coloredlogs
 import snyk
@@ -55,7 +56,7 @@ Usage: SNYK_TOKEN=your_token python snyk-bulk-delete.py [options]
 
 if "--help" in sys.argv:
     print(helpString)
-    sys.exit(0)
+    sys.exit(2)
 
 
 # get all user orgs and verify snyk API token
@@ -263,6 +264,10 @@ def main(argv):  # pylint: disable=too-many-statements
             "\033[93mTHIS IS A DRY RUN, NOTHING WILL BE DELETED! USE --FORCE TO APPLY ACTIONS\u001b[0m"
         )
 
+    results = {
+        "projects": {"deactivated": [], "deleted": [], "failed": [], "skipped": []},
+        "orgs": {"deleted": [], "skipped": []},
+    }
     # delete functionality
     for currOrg in userOrgs:  # pylint: disable=too-many-nested-blocks
 
@@ -271,8 +276,6 @@ def main(argv):  # pylint: disable=too-many-statements
             logger.debug("Skipping organization: %s not in %s", currOrg.slug, inputOrgs)
             continue
 
-        # remove currorg for org proccesing list and print proccesing message
-        # inputOrgs.remove(currOrg.slug)
         logger.info(
             "Processing organization: %s",
             currOrg.slug,
@@ -292,12 +295,13 @@ def main(argv):  # pylint: disable=too-many-statements
             # dateMatch validation
             try:
                 dateMatch = is_date_between(currProject.created, beforeDate, afterDate)
-            except Exception as exc:
+            except ValueError as exc:
                 logger.error(
                     "Error processing before/after datetimes, please check your format %s",
                     exc,
                 )
                 sys.exit(2)
+
             # nameMatch validation
             for key in ignoreKeys:
                 if key in currProject.name:
@@ -376,11 +380,17 @@ def main(argv):  # pylint: disable=too-many-statements
                 try:
                     if not dryrun:
                         currProject.delete()
+                        results["projects"]["deleted"].append(currProject)
                     spinner.ok("✅ ")
                 except Exception as e:
                     spinner.fail(f"💥 {e}")
+                    results["projects"]["failed"].append(currProject)
+                finally:
+                    spinner.stop()
+
         # if org is empty and --delete-empty-org flag is on
         if len(currOrg.projects.all()) == 0 and deleteorgs:
+
             spinner = yaspin(
                 text="Deleting\033[1;32m {}\u001b[0m since it is an empty organization".format(
                     currOrg.name
@@ -391,14 +401,25 @@ def main(argv):  # pylint: disable=too-many-statements
             try:
                 if not dryrun:
                     client.delete(f"org/{currOrg.id}")
+                results["orgs"]["deleted"].append(currOrg)
                 spinner.ok("✅ ")
-                spinner.stop()
             except Exception as e:
                 spinner.fail(f"💥 {e}")
+                results["orgs"]["failed"].append(currOrg)
+            finally:
                 spinner.stop()
 
     if dryrun:
         print("\033[93mDRY RUN COMPLETE NOTHING DELETED")
+
+    for i_type in results:  # pylint: disable=consider-using-dict-items
+        for action in results[i_type]:
+            logger.info(
+                "%s - %s: %s",
+                i_type.capitalize(),
+                action.capitalize(),
+                len(results[i_type][action]),
+            )
 
 
 main(sys.argv[1:])
