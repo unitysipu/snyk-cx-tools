@@ -9,7 +9,7 @@ import coloredlogs  # pylint: disable=unused-import
 import snyk
 import snyk.errors
 
-FORMAT = "[%(asctime)s] [pid(%(process)d):%(threadName)s] [%(levelname)s] [%(module)s.%(funcName)s:%(lineno)d] %(message)s"
+FORMAT = "[%(asctime)s] [%(levelname)s] [pid(%(process)d):%(threadName)s] [%(module)s.%(funcName)s:%(lineno)d] %(message)s"
 
 LEVEL = "INFO"
 if os.getenv("DEBUG"):
