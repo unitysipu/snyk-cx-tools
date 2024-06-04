@@ -1,19 +1,49 @@
 import getopt
 import logging
+from logging.config import dictConfig
 import os
 import sys
 from datetime import datetime
 
-import coloredlogs
+import coloredlogs  # pylint: disable=unused-import
 import snyk
 import snyk.errors
-from yaspin import yaspin
 
-FORMAT = "[%(asctime)s] [%(process)d:%(threadName)s] [%(levelname)s] [%(name)s.%(module)s.%(funcName)s:%(lineno)d] %(message)s"
+FORMAT = "[%(asctime)s] [pid(%(process)d):%(threadName)s] [%(levelname)s] [%(module)s.%(funcName)s:%(lineno)d] %(message)s"
 
+LEVEL = "INFO"
+if os.getenv("DEBUG"):
+    LEVEL = "DEBUG"
+
+logging_config = {
+    "version": 1,
+    "formatters": {
+        "default": {
+            "()": "coloredlogs.ColoredFormatter",
+            "format": FORMAT,
+        },
+        "file": {
+            "format": FORMAT,
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "stream": "ext://sys.stdout",
+            "formatter": "default",
+        },
+        "file": {
+            "class": "logging.FileHandler",
+            "filename": "snyk-bulk-delete.log",
+            "mode": "a",
+            "formatter": "file",
+        },
+    },
+    "root": {"level": LEVEL, "handlers": ["console", "file"]},
+}
+
+dictConfig(logging_config)
 logger = logging.getLogger(__name__)
-coloredlogs.install(level="DEBUG", fmt=FORMAT)
-
 
 helpString = """
 This script will allow you to deactivate or delete projects in bulk based on a set of filters.
@@ -254,18 +284,20 @@ def main(argv):  # pylint: disable=too-many-statements
 
     # error handling if no orgs declared
     if len(inputOrgs) == 0:
-        print("No orgs to process entered, exiting")
+        logger.error("No --orgs to process entered, exiting")
         print(helpString)
 
     # print dryrun message
     if dryrun:
-        print(
-            "\033[93mTHIS IS A DRY RUN, NOTHING WILL BE DELETED! USE --FORCE TO APPLY ACTIONS\u001b[0m"
+        logger.info(
+            "THIS IS A DRY RUN, NOTHING WILL BE DELETED! USE --FORCE TO APPLY ACTIONS"
         )
+    if not dryrun:
+        logger.error("FORCE FLAG DETECTED, ACTIONS WILL BE APPLIED")
 
     results = {
         "projects": {"deactivated": [], "deleted": [], "failed": [], "skipped": []},
-        "orgs": {"deleted": [], "skipped": []},
+        "orgs": {"deleted": [], "failed": []},
     }
     # delete functionality
     for currOrg in userOrgs:  # pylint: disable=too-many-nested-blocks
@@ -275,10 +307,7 @@ def main(argv):  # pylint: disable=too-many-statements
             logger.debug("Skipping organization: %s not in %s", currOrg.slug, inputOrgs)
             continue
 
-        logger.info(
-            "Processing organization: %s",
-            currOrg.slug,
-        )
+        logger.info("Processing organization: %s", currOrg.slug)
 
         # cycle through all projects in current org and delete projects that match filter
         for currProject in currOrg.projects.all():
@@ -347,17 +376,17 @@ def main(argv):  # pylint: disable=too-many-statements
                 results["projects"]["skipped"].append(currProject)
                 continue
 
+            remoteurl = currProject.remoteRepoUrl
+            if not remoteurl or remoteurl is None:
+                remoteurl = currProject.branch
+            if not remoteurl or remoteurl is None:
+                remoteurl = currProject.name
+
+            currProjectDetails = f"Org: {currProject.organization.url}, URL: {remoteurl}, Name: {currProject.name} Origin: {currProject.origin}, Type: {currProject.type}, Feature: {currProjectProductType}"
             # delete active project if filters are met
             if isActive and not deleteNonActive:
-                currProjectDetails = f"Origin: {currProject.origin}, Type: {currProject.type}, Product: {currProjectProductType}"
                 action = "Deactivating" if deactivate else "Deleting"
-                spinner = yaspin(
-                    text=f"{action}\033[1;32m {currProject.name}", color="yellow"
-                )
-                spinner.write(
-                    f"\u001b[0m    Processing project: \u001b[34m{currProjectDetails}\u001b[0m, Status Below👇"
-                )
-                spinner.start()
+                logger.warning("%s project: %s", action, currProjectDetails)
                 try:
                     if not deactivate:
                         if not dryrun:
@@ -367,57 +396,35 @@ def main(argv):  # pylint: disable=too-many-statements
                         if not dryrun:
                             currProject.deactivate()
                         results["projects"]["deactivated"].append(currProject)
-                    spinner.ok("✅ ")
                 except Exception as e:
-                    spinner.fail(f"💥 {e}")
+                    logger.error(
+                        "Error %s project: %s -> %s", action, currProjectDetails, e
+                    )
                     results["projects"]["failed"].append(currProject)
-                finally:
-                    spinner.stop()
 
             # delete non-active project if filters are met
             if not isActive and deleteNonActive:
-                currProjectDetails = f"Origin: {currProject.origin}, Type: {currProject.type}, Product: {currProjectProductType}"
-                spinner = yaspin(
-                    text=f"Deleting\033[1;32m {currProject.name}", color="yellow"
-                )
-                spinner.write(
-                    f"\u001b[0m    Processing project: \u001b[34m{currProjectDetails}\u001b[0m, Status Below👇"
-                )
-                spinner.start()
+                logger.warning("Deleting inactive project: %s", currProjectDetails)
                 try:
                     if not dryrun:
                         currProject.delete()
                         results["projects"]["deleted"].append(currProject)
-                    spinner.ok("✅ ")
                 except Exception as e:
-                    spinner.fail(f"💥 {e}")
+                    logger.error(
+                        "Error deleting project: %s -> %s", currProjectDetails, e
+                    )
                     results["projects"]["failed"].append(currProject)
-                finally:
-                    spinner.stop()
 
         # if org is empty and --delete-empty-org flag is on
         if len(currOrg.projects.all()) == 0 and deleteorgs:
-
-            spinner = yaspin(
-                text="Deleting\033[1;32m {}\u001b[0m since it is an empty organization".format(
-                    currOrg.name
-                ),
-                color="yellow",
-            )
-            spinner.start()
+            logger.warning("Deleting empty organization: %s", currOrg.name)
             try:
                 if not dryrun:
                     client.delete(f"org/{currOrg.id}")
                 results["orgs"]["deleted"].append(currOrg)
-                spinner.ok("✅ ")
             except Exception as e:
-                spinner.fail(f"💥 {e}")
+                logger.error("Error processing organization: %s", e, exc_info=True)
                 results["orgs"]["failed"].append(currOrg)
-            finally:
-                spinner.stop()
-
-    if dryrun:
-        print("\033[93mDRY RUN COMPLETE NOTHING DELETED")
 
     for i_type in results:  # pylint: disable=consider-using-dict-items
         for action in results[i_type]:
@@ -427,6 +434,11 @@ def main(argv):  # pylint: disable=too-many-statements
                 action.capitalize(),
                 len(results[i_type][action]),
             )
+
+    if dryrun:
+        logger.info("DRY RUN COMPLETE NOTHING DELETED")
+    else:
+        logger.error("ACTIONS APPLIED, PLEASE CHECK LOGS FOR ERRORS")
 
 
 main(sys.argv[1:])
