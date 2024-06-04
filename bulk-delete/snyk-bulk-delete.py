@@ -91,7 +91,7 @@ if "--help" in sys.argv:
 # get all user orgs and verify snyk API token
 snyk_token = os.getenv("SNYK_TOKEN", "")
 if not snyk_token:
-    logger.error("💥 Please set your SNYK_TOKEN as an environment variable")
+    logger.error("Please set your SNYK_TOKEN as an environment variable")
     print(helpString)
     sys.exit(1)
 
@@ -102,7 +102,7 @@ try:
     logger.info("Found organizations: %s", len(userOrgs))
 except snyk.errors.SnykHTTPError as err:
     logger.error(
-        "💥 Ran into an error while fetching account details, please check your API token: %s",
+        "Ran into an error while fetching account details, please check your API token: %s",
         vars(err),
     )
     print(helpString)
@@ -293,7 +293,7 @@ def main(argv):  # pylint: disable=too-many-statements
             "THIS IS A DRY RUN, NOTHING WILL BE DELETED! USE --FORCE TO APPLY ACTIONS"
         )
     if not dryrun:
-        logger.error("FORCE FLAG DETECTED, ACTIONS WILL BE APPLIED")
+        logger.info("FORCE FLAG DETECTED, ACTIONS WILL BE APPLIED")
 
     results = {
         "projects": {"deactivated": [], "deleted": [], "failed": [], "skipped": []},
@@ -446,7 +446,7 @@ def main(argv):  # pylint: disable=too-many-statements
     if dryrun:
         logger.info("DRY RUN COMPLETE NOTHING DELETED")
     else:
-        logger.error("ACTIONS APPLIED, PLEASE CHECK LOGS FOR ERRORS")
+        logger.info("ACTIONS APPLIED, PLEASE CHECK LOGS FOR ERRORS")
 
 
 main(sys.argv[1:])
