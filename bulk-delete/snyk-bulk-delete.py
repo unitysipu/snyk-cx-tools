@@ -300,139 +300,149 @@ def main(argv):  # pylint: disable=too-many-statements
         "orgs": {"deleted": [], "failed": []},
     }
     # delete functionality
-    for currOrg in userOrgs:  # pylint: disable=too-many-nested-blocks
+    try:  # pylint: disable=too-many-nested-blocks
+        for currOrg in userOrgs:  # pylint: disable=too-many-nested-blocks
 
-        # if curr org is in list of orgs to process
-        if currOrg.slug not in inputOrgs:
-            logger.debug("Skipping organization: %s not in %s", currOrg.slug, inputOrgs)
-            continue
-
-        logger.info("Collecting projects for organization: %s", currOrg.url)
-        org_projects = currOrg.projects.all()
-        logger.info("%s has %s projects", currOrg.url, len(org_projects))
-
-        # cycle through all projects in current org and delete projects that match filter
-        for count, currProject in enumerate(org_projects):
-            logger.debug("[%s/%s] - %s", count + 1, len(org_projects), currOrg.url)
-
-            # variables which determine whether project matches criteria to delete, if criteria is empty they will be defined as true
-            scaTypeMatch = False
-            originMatch = False
-            productMatch = False
-            dateMatch = False
-            nameMatch = True
-            isActive = currProject.isMonitored
-
-            # dateMatch validation
-            try:
-                dateMatch = is_date_between(currProject.created, beforeDate, afterDate)
-            except ValueError as exc:
-                logger.error(
-                    "Error processing before/after datetimes, please check your format %s",
-                    exc,
-                )
-                sys.exit(2)
-
-            # nameMatch validation
-            for key in ignoreKeys:
-                if key in currProject.name:
-                    nameMatch = False
-
-            # if scatypes are not declared or curr project type matches filter criteria then return true
-            if len(scaTypes) != 0:
-                if currProject.type in scaTypes:
-                    scaTypeMatch = True
-            else:
-                scaTypeMatch = True
-
-            # if origintypes are not declared or curr project origin matches filter criteria then return true
-            if len(origins) != 0:
-                if currProject.origin in origins:
-                    originMatch = True
-            else:
-                originMatch = True
-
-            # if producttypes are not declared or curr project product matches filter criteria then return true
-            currProjectProductType = convertProjectTypeToProduct(currProject.type)
-
-            if (currProjectProductType in products) or (
-                currProjectProductType not in product_excludes
-            ):
-                productMatch = True
-
-            # Guard clause to avoid complex conditions below
-            if not (
-                scaTypeMatch
-                and originMatch
-                and productMatch
-                and dateMatch
-                and nameMatch
-                and not filtersEmpty
-            ):
+            # if curr org is in list of orgs to process
+            if currOrg.slug not in inputOrgs:
                 logger.debug(
-                    "Skipping unmatched project: %s, Type: %s, Origin: %s, Product: %s",
-                    currProject.name,
-                    currProject.type,
-                    currProject.origin,
-                    currProjectProductType,
+                    "Skipping organization: %s not in %s", currOrg.slug, inputOrgs
                 )
-                results["projects"]["skipped"].append(currProject)
                 continue
 
-            remoteurl = currProject.remoteRepoUrl
-            if not remoteurl or remoteurl is None:
-                remoteurl = currProject.branch
-            if not remoteurl or remoteurl is None:
-                remoteurl = currProject.name
+            logger.info("Collecting projects for organization: %s", currOrg.url)
+            org_projects = currOrg.projects.all()
+            logger.info("%s has %s projects", currOrg.url, len(org_projects))
 
-            currProjectDetails = f"Org: {currProject.organization.url}, URL: {remoteurl}, Name: {currProject.name} Origin: {currProject.origin}, Type: {currProject.type}, Feature: {currProjectProductType}"
-            # delete active project if filters are met
-            if isActive and not deleteNonActive:
-                action = "Deactivating" if deactivate else "Deleting"
-                logger.warning("%s project: %s", action, currProjectDetails)
+            # cycle through all projects in current org and delete projects that match filter
+            for count, currProject in enumerate(org_projects):
+                logger.debug("[%s/%s] - %s", count + 1, len(org_projects), currOrg.url)
+
+                # variables which determine whether project matches criteria to delete, if criteria is empty they will be defined as true
+                scaTypeMatch = False
+                originMatch = False
+                productMatch = False
+                dateMatch = False
+                nameMatch = True
+                isActive = currProject.isMonitored
+
+                # dateMatch validation
                 try:
-                    if not deactivate:
+                    dateMatch = is_date_between(
+                        currProject.created, beforeDate, afterDate
+                    )
+                except ValueError as exc:
+                    logger.error(
+                        "Error processing before/after datetimes, please check your format %s",
+                        exc,
+                    )
+                    sys.exit(2)
+
+                # nameMatch validation
+                for key in ignoreKeys:
+                    if key in currProject.name:
+                        nameMatch = False
+
+                # if scatypes are not declared or curr project type matches filter criteria then return true
+                if len(scaTypes) != 0:
+                    if currProject.type in scaTypes:
+                        scaTypeMatch = True
+                else:
+                    scaTypeMatch = True
+
+                # if origintypes are not declared or curr project origin matches filter criteria then return true
+                if len(origins) != 0:
+                    if currProject.origin in origins:
+                        originMatch = True
+                else:
+                    originMatch = True
+
+                # if producttypes are not declared or curr project product matches filter criteria then return true
+                currProjectProductType = convertProjectTypeToProduct(currProject.type)
+
+                if (currProjectProductType in products) or (
+                    currProjectProductType not in product_excludes
+                ):
+                    productMatch = True
+
+                # Guard clause to avoid complex conditions below
+                if not (
+                    scaTypeMatch
+                    and originMatch
+                    and productMatch
+                    and dateMatch
+                    and nameMatch
+                    and not filtersEmpty
+                ):
+                    logger.debug(
+                        "Skipping unmatched project: %s, Type: %s, Origin: %s, Product: %s",
+                        currProject.name,
+                        currProject.type,
+                        currProject.origin,
+                        currProjectProductType,
+                    )
+                    results["projects"]["skipped"].append(currProject)
+                    continue
+
+                remoteurl = currProject.remoteRepoUrl
+                if not remoteurl or remoteurl is None:
+                    remoteurl = currProject.branch
+                if not remoteurl or remoteurl is None:
+                    remoteurl = currProject.name
+
+                currProjectDetails = f"Org: {currProject.organization.url}, URL: {remoteurl}, Name: {currProject.name} Origin: {currProject.origin}, Type: {currProject.type}, Feature: {currProjectProductType}"
+                # delete active project if filters are met
+                if isActive and not deleteNonActive:
+                    action = "Deactivating" if deactivate else "Deleting"
+                    logger.warning("%s project: %s", action, currProjectDetails)
+                    try:
+                        if not deactivate:
+                            if not dryrun:
+                                currProject.delete()
+                            results["projects"]["deleted"].append(currProject)
+                        else:
+                            if not dryrun:
+                                currProject.deactivate()
+                            results["projects"]["deactivated"].append(currProject)
+                    except Exception as e:
+                        logger.error(
+                            "Error %s project: %s -> %s", action, currProjectDetails, e
+                        )
+                        results["projects"]["failed"].append(currProject)
+
+                # delete non-active project if filters are met
+                if not isActive and deleteNonActive:
+                    logger.warning("Deleting inactive project: %s", currProjectDetails)
+                    try:
                         if not dryrun:
                             currProject.delete()
-                        results["projects"]["deleted"].append(currProject)
-                    else:
-                        if not dryrun:
-                            currProject.deactivate()
-                        results["projects"]["deactivated"].append(currProject)
-                except Exception as e:
-                    logger.error(
-                        "Error %s project: %s -> %s", action, currProjectDetails, e
-                    )
-                    results["projects"]["failed"].append(currProject)
+                            results["projects"]["deleted"].append(currProject)
+                    except Exception as e:
+                        logger.error(
+                            "Error deleting project: %s -> %s", currProjectDetails, e
+                        )
+                        results["projects"]["failed"].append(currProject)
 
-            # delete non-active project if filters are met
-            if not isActive and deleteNonActive:
-                logger.warning("Deleting inactive project: %s", currProjectDetails)
+            # if org is empty and --delete-empty-org flag is on
+            if deleteorgs:
+                logger.info(
+                    "Delete empty org flag set, checking if empty: %s", currOrg.url
+                )
+                if not len(currOrg.projects.all()) == 0:
+                    logger.info("%s not empty, continuing...", currOrg.url)
+                    continue
+
+                logger.warning("Deleting empty organization: %s", currOrg.url)
                 try:
                     if not dryrun:
-                        currProject.delete()
-                        results["projects"]["deleted"].append(currProject)
+                        client.delete(f"org/{currOrg.id}")
+                    results["orgs"]["deleted"].append(currOrg)
                 except Exception as e:
-                    logger.error(
-                        "Error deleting project: %s -> %s", currProjectDetails, e
-                    )
-                    results["projects"]["failed"].append(currProject)
+                    logger.error("Error processing organization: %s", e, exc_info=True)
+                    results["orgs"]["failed"].append(currOrg)
 
-        # if org is empty and --delete-empty-org flag is on
-        if deleteorgs:
-            logger.info("Delete empty org flag set, checking if empty: %s", currOrg.url)
-            if not len(currOrg.projects.all()) == 0:
-                logger.info("%s not empty, continuing...", currOrg.url)
-                continue
-
-            logger.warning("Deleting empty organization: %s", currOrg.url)
-            try:
-                if not dryrun:
-                    client.delete(f"org/{currOrg.id}")
-                results["orgs"]["deleted"].append(currOrg)
-            except Exception as e:
-                logger.error("Error processing organization: %s", e, exc_info=True)
-                results["orgs"]["failed"].append(currOrg)
+    except KeyboardInterrupt:
+        logger.error("User interrupted, aborting")
 
     for i_type in results:  # pylint: disable=consider-using-dict-items
         for action in results[i_type]:
