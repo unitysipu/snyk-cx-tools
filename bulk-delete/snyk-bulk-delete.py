@@ -307,10 +307,13 @@ def main(argv):  # pylint: disable=too-many-statements
             logger.debug("Skipping organization: %s not in %s", currOrg.slug, inputOrgs)
             continue
 
-        logger.info("Processing organization: %s", currOrg.slug)
+        logger.info("Collecting projects for organization: %s", currOrg.url)
+        org_projects = currOrg.projects.all()
+        logger.info("%s has %s projects", currOrg.url, len(org_projects))
 
         # cycle through all projects in current org and delete projects that match filter
-        for currProject in currOrg.projects.all():
+        for count, currProject in enumerate(org_projects):
+            logger.debug("[%s/%s] - %s", count + 1, len(org_projects), currOrg.url)
 
             # variables which determine whether project matches criteria to delete, if criteria is empty they will be defined as true
             scaTypeMatch = False
@@ -416,8 +419,13 @@ def main(argv):  # pylint: disable=too-many-statements
                     results["projects"]["failed"].append(currProject)
 
         # if org is empty and --delete-empty-org flag is on
-        if len(currOrg.projects.all()) == 0 and deleteorgs:
-            logger.warning("Deleting empty organization: %s", currOrg.name)
+        if deleteorgs:
+            logger.info("Delete empty org flag set, checking if empty: %s", currOrg.url)
+            if not len(currOrg.projects.all()) == 0:
+                logger.info("%s not empty, continuing...", currOrg.url)
+                continue
+
+            logger.warning("Deleting empty organization: %s", currOrg.url)
             try:
                 if not dryrun:
                     client.delete(f"org/{currOrg.id}")
