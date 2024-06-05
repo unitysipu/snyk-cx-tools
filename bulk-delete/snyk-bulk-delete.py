@@ -340,6 +340,18 @@ def main(argv):  # pylint: disable=too-many-statements
                 dateMatch = False
                 nameMatch = True
                 isActive = currProject.isMonitored
+                readOnly = currProject.readOnly
+
+                if readOnly:
+                    logger.info(
+                        "Skipping read-only (public) project: %s, Type: %s, Origin: %s, Product: %s",
+                        currProject.name,
+                        currProject.type,
+                        currProject.origin,
+                        convertProjectTypeToProduct(currProject.type),
+                    )
+                    results["projects"]["skipped"].append(currProject)
+                    continue
 
                 # dateMatch validation
                 try:
