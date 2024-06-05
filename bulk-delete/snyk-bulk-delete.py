@@ -55,31 +55,33 @@ Usage: SNYK_TOKEN=your_token python snyk-bulk-delete.py [options]
 
 --force: By default this script will perform a dry run, add this flag to actually apply changes
 
+# Delete flags
+
 --delete: By default this script will deactivate projects, add this flag to delete active projects instead
-
---delete-non-active-projects: By default this script will deactivate projects, add this flag to delete non-active projects instead
-(if this flag is present only non-active projects will be deleted)
-
---origins: Defines origin of projects to delete (github, github-enterprise, github-cloud-app...)
-
---orgs: A set of orgs upon which to perform delete, be sure to use org slug instead of org display name (use ! for all orgs)
-
---sca-types: Defines types of projects to delete (deb, linux, dockerfile, rpm, apk, npm, sast ...)
-
---products: Defines which Snyk feature related projects to delete
-             examples: sast container iac opensource
-
---product_excludes: Defines product/s types of projects to exclude from deletion
-
+--delete-inactive-projects: Add this flag to delete any found inactive projects
+    * if this flag is present only inactive projects will be deleted
 --delete-empty-orgs: This will delete all orgs that do not have any projects in them
     * Please replace spaces with dashes(-) when entering orgs
     * If entering multiple values use the following format: "value-1 value-2 value-3"
 
---after: Only delete projects that were created after a certain date time (in ISO 8601 format, i.e 2023-09-01T00:00:00.000Z)
+# Time filters:
 
+--after: Only delete projects that were created after a certain date time (in ISO 8601 format, i.e 2023-09-01T00:00:00.000Z)
 --before : Only delete projects that were created before  a certain date time (in ISO 8601 format, i.e 2023-09-01T00:00:00.000Z)
 
---ignore-keys: An array of key's, if any of these key's are present in a project name then that project will not be targeted for deletion/deactivation
+# Arrays of filters, repeat following argument for many: (i.e --orgs=org1 --orgs=org2)
+
+--origins: Defines origin of projects to delete (github, github-enterprise, github-cloud-app...)
+--orgs: Organization upon which to perform action, be sure to use org slug instead of org display name (use ! for all orgs)
+--org-excludes: org to exclude from processing (and deletion)
+--sca-types: Defines types of projects to delete
+    * examples: deb, linux, dockerfile, rpm, apk, npm, sast
+--products: Defines which Snyk feature related projects to delete
+    * examples: sast container iac opensource
+
+--product_excludes: Defines feature types of projects to exclude from deletion
+
+--name-excludes: An array of names, if any of these names are present in a project name then that project will not be targeted for deletion/deactivation
 """
 
 
@@ -185,19 +187,85 @@ def convertProjectTypeToProduct(inputType: str) -> str:
     return "unknown"
 
 
+def is_project_skipped(filters, project):
+    project_type = convertProjectTypeToProduct(project.type)
+    if project.readOnly:
+        logger.info(
+            "Skipping read-only (public) project: %s, Type: %s, Origin: %s, Product: %s",
+            project.name,
+            project.type,
+            project.origin,
+            project_type,
+        )
+        return True
+
+    if project_type == "unknown":
+        logger.error(
+            "Not processing unknown project type: %s, Type: %s, Origin: %s, Product: %s",
+            project.name,
+            project.type,
+            project.origin,
+            project_type,
+        )
+        return True
+
+    # nameMatch validation
+    if project.name in filters["name-excludes"]:
+        return True
+
+    # if scatypes are not declared or curr project type matches filter criteria then return true
+    if filters["sca-types"] and project.type not in filters["sca-types"]:
+        return True
+
+    # if origintypes are not declared or curr project origin matches filter criteria then return true
+    if filters["origins"] and project.origin not in filters["origins"]:
+        return True
+
+    # skip excluded products
+    if filters["product-excludes"] and project_type in filters["product-excludes"]:
+        return True
+
+    # skip products not in filter
+    if filters["products"] and project_type not in filters["products"]:
+        return True
+
+    return False
+
+
+def is_org_filtered(org, filters):
+    if org.slug in filters["org-excludes"]:
+        logger.warning(
+            "Organization skipped, %s in excludes %s",
+            org.slug,
+            filters["orgs"],
+        )
+        return True
+    if org.slug not in filters["orgs"]:
+        logger.debug(
+            "Organization skipped, %s not in %s",
+            org.slug,
+            filters["orgs"],
+        )
+        return True
+    return False
+
+
 def main(argv):  # pylint: disable=too-many-statements
-    inputOrgs = []
-    products = []
-    scaTypes = []
-    origins = []
-    product_excludes = []
+    filters = {
+        "name-excludes": set(),
+        "org-excludes": set(),
+        "orgs": set(),
+        "origins": set(),
+        "product-excludes": set(),
+        "products": set(),
+        "sca-types": set(),
+    }
     deleteorgs = False
     dryrun = True
     deactivate = True
-    deleteNonActive = False
-    beforeDate = ""
-    afterDate = ""
-    ignoreKeys = []
+    deleteinActive = False
+    before_date = ""
+    after_date = ""
 
     # valid input arguments declared here
     try:
@@ -205,19 +273,20 @@ def main(argv):  # pylint: disable=too-many-statements
             argv,
             "hofd",
             [
-                "help",
-                "orgs=",
-                "sca-types=",
-                "products=",
-                "product_excludes=",
-                "origins=",
-                "ignore-keys=",
-                "before=",
-                "after=",
-                "force",
-                "delete-empty-orgs",
+                "after-date=",
+                "before-date=",
                 "delete",
-                "delete-non-active-projects",
+                "delete-empty-orgs",
+                "delete-inactive-projects",
+                "force",
+                "help",
+                "name-excludes=",
+                "org-excludes=",
+                "orgs=",
+                "origins=",
+                "product-excludes=",
+                "products=",
+                "sca-types=",
             ],
         )
     except getopt.GetoptError:
@@ -225,66 +294,56 @@ def main(argv):  # pylint: disable=too-many-statements
         sys.exit(2)
 
     # process input
-    logger.debug(opts)
+    logger.debug("Passed options: %s", opts)
     for opt, arg in opts:
         if opt == "--help":
             print(helpString)
             sys.exit(2)
-        if opt == "--orgs":
+        if opt in "--orgs":
             if arg == "!":
-                inputOrgs = [org.slug for org in userOrgs]
+                filters["orgs"] = set(org.slug for org in userOrgs)
             else:
-                inputOrgs = arg.split()
-        if opt == "--sca-types":
-            scaTypes = [scaType.lower() for scaType in arg.split()]
-        if opt == "--products":
-            products = [product.lower() for product in arg.split()]
-        if opt == "--product_excludes":
-            product_excludes = [product.lower() for product in arg.split()]
-        if opt == "--origins":
-            origins = [origin.lower() for origin in arg.split()]
+                filters["orgs"].add(arg.lower())
+        if opt in "--org-excludes":
+            filters["org-excludes"].add(arg.lower())
+        if opt in "--sca-types":
+            filters["sca-types"].add(arg.lower())
+        if opt in "--products":
+            filters["products"].add(arg.lower())
+        if opt in "--product-excludes":
+            filters["product-excludes"].add(arg.lower())
+        if opt in "--origins":
+            filters["origins"].add(arg.lower())
+        if opt in "--name-excludes":
+            filters["name-excludes"].add(arg.lower())
         if opt == "--delete-empty-orgs":
             deleteorgs = True
         if opt == "--force":
             dryrun = False
         if opt == "--delete":
             deactivate = False
-        if opt == "--delete-non-active-projects":
+        if opt == "--delete-inactive-projects":
             deactivate = False
-            deleteNonActive = True
+            deleteinActive = True
         if opt == "--before":
-            beforeDate = arg
+            before_date = arg
         if opt == "--after":
-            afterDate = arg
-        if opt == "--ignore-keys":
-            ignoreKeys = [key.lower() for key in arg.split()]
+            after_date = arg
 
-    # error handling if no filters declared
-    logger.debug(
-        "Filters: sca-types: %s, products: %s, origins: %s, product_excludes: %s",
-        scaTypes,
-        products,
-        origins,
-        product_excludes,
-    )
+    logger.debug("Filters: %s", filters)
 
-    filtersEmpty = (
-        len(scaTypes) == 0
-        and len(products) == 0
-        and len(product_excludes) == 0
-        and len(origins) == 0
-    )
-    if filtersEmpty and not deleteorgs:
-        logger.debug("Empty params %s:", filtersEmpty)
+    if all(len(value) == 0 for value in filters.values()) and not deleteorgs:
         logger.error(
-            "No settings entered, define one of: sca-types, products, product_excludes, origins"
+            "No filters defined entered, define one of: %s", list(filters.keys())
         )
         print(helpString)
         sys.exit(2)
 
     # error handling if no orgs declared
-    if len(inputOrgs) == 0:
-        logger.error("No --orgs to process entered, exiting")
+    if not filters["orgs"]:
+        logger.error(
+            "No --orgs to process entered, use '!' for all, or define slugs..."
+        )
         print(helpString)
 
     # print dryrun message
@@ -299,17 +358,11 @@ def main(argv):  # pylint: disable=too-many-statements
         "projects": {"deactivated": [], "deleted": [], "failed": [], "skipped": []},
         "orgs": {"deleted": [], "failed": []},
     }
-    # delete functionality
     try:  # pylint: disable=too-many-nested-blocks
-        for o_count, currOrg in enumerate(
-            userOrgs
-        ):  # pylint: disable=too-many-nested-blocks
+        for o_count, currOrg in enumerate(userOrgs):
 
             # if curr org is in list of orgs to process
-            if currOrg.slug not in inputOrgs:
-                logger.debug(
-                    "Skipping organization: %s not in %s", currOrg.slug, inputOrgs
-                )
+            if is_org_filtered(currOrg, filters):
                 continue
 
             logger.info(
@@ -331,95 +384,6 @@ def main(argv):  # pylint: disable=too-many-statements
                     len(org_projects),
                     currOrg.url,
                 )
-                logger.debug(currProject)
-
-                # variables which determine whether project matches criteria to delete, if criteria is empty they will be defined as true
-                scaTypeMatch = False
-                originMatch = False
-                productMatch = False
-                dateMatch = False
-                nameMatch = True
-                isActive = currProject.isMonitored
-                readOnly = currProject.readOnly
-                currProjectProductType = convertProjectTypeToProduct(currProject.type)
-
-                if readOnly:
-                    logger.info(
-                        "Skipping read-only (public) project: %s, Type: %s, Origin: %s, Product: %s",
-                        currProject.name,
-                        currProject.type,
-                        currProject.origin,
-                        currProjectProductType,
-                    )
-                    results["projects"]["skipped"].append(currProject)
-                    continue
-
-                if currProjectProductType == "unknown":
-                    logger.error(
-                        "Not processing unknown project type: %s, Type: %s, Origin: %s, Product: %s",
-                        currProject.name,
-                        currProject.type,
-                        currProject.origin,
-                        currProjectProductType,
-                    )
-                    results["projects"]["failed"].append(currProject)
-                    continue
-
-                # dateMatch validation
-                try:
-                    dateMatch = is_date_between(
-                        currProject.created, beforeDate, afterDate
-                    )
-                except ValueError as exc:
-                    logger.error(
-                        "Error processing before/after datetimes, please check your format %s",
-                        exc,
-                    )
-                    sys.exit(2)
-
-                # nameMatch validation
-                for key in ignoreKeys:
-                    if key in currProject.name:
-                        nameMatch = False
-
-                # if scatypes are not declared or curr project type matches filter criteria then return true
-                if len(scaTypes) != 0:
-                    if currProject.type in scaTypes:
-                        scaTypeMatch = True
-                else:
-                    scaTypeMatch = True
-
-                # if origintypes are not declared or curr project origin matches filter criteria then return true
-                if len(origins) != 0:
-                    if currProject.origin in origins:
-                        originMatch = True
-                else:
-                    originMatch = True
-
-                # if producttypes are not declared or curr project product matches filter criteria then return true
-                if (currProjectProductType in products) or (
-                    currProjectProductType not in product_excludes
-                ):
-                    productMatch = True
-
-                # Guard clause to avoid complex conditions below
-                if not (
-                    scaTypeMatch
-                    and originMatch
-                    and productMatch
-                    and dateMatch
-                    and nameMatch
-                    and not filtersEmpty
-                ):
-                    logger.debug(
-                        "Skipping unmatched project: %s, Type: %s, Origin: %s, Product: %s",
-                        currProject.name,
-                        currProject.type,
-                        currProject.origin,
-                        currProjectProductType,
-                    )
-                    results["projects"]["skipped"].append(currProject)
-                    continue
 
                 remoteurl = currProject.remoteRepoUrl
                 if not remoteurl or remoteurl is None:
@@ -427,9 +391,38 @@ def main(argv):  # pylint: disable=too-many-statements
                 if not remoteurl or remoteurl is None:
                     remoteurl = currProject.name
 
-                currProjectDetails = f"Org: {currProject.organization.url}, URL: {remoteurl}, Name: {currProject.name} Origin: {currProject.origin}, Type: {currProject.type}, Feature: {currProjectProductType}"
+                currProjectProductType = convertProjectTypeToProduct(currProject.type)
+                currProjectDetails = {
+                    "feature": currProjectProductType,
+                    "name": currProject.name,
+                    "org": currProject.organization.url,
+                    "origin": currProject.origin,
+                    "type": currProject.type,
+                    "url": remoteurl,
+                }
+
+                # dateMatch validation
+                try:
+                    if not is_date_between(
+                        currProject.created,
+                        before_date,
+                        after_date,
+                    ):
+                        continue
+                except ValueError as exc:
+                    logger.error(
+                        "Error processing before/after datetimes, please check your format %s",
+                        exc,
+                    )
+                    sys.exit(2)
+
+                if is_project_skipped(filters, currProject):
+                    logger.debug("Skipping unmatched project: %s", currProjectDetails)
+                    results["projects"]["skipped"].append(currProject)
+                    continue
+
                 # delete active project if filters are met
-                if isActive and not deleteNonActive:
+                if currProject.isMonitored and not deleteinActive:
                     action = "Deactivating" if deactivate else "Deleting"
                     logger.warning("%s project: %s", action, currProjectDetails)
                     try:
@@ -447,18 +440,24 @@ def main(argv):  # pylint: disable=too-many-statements
                         )
                         results["projects"]["failed"].append(currProject)
 
-                # delete non-active project if filters are met
-                if not isActive and deleteNonActive:
-                    logger.warning("Deleting inactive project: %s", currProjectDetails)
-                    try:
-                        if not dryrun:
-                            currProject.delete()
-                            results["projects"]["deleted"].append(currProject)
-                    except Exception as e:
-                        logger.error(
-                            "Error deleting project: %s -> %s", currProjectDetails, e
+                # delete inactive project if filters are met
+                if not currProject.isMonitored:
+                    logger.debug("Inactive project: %s", currProjectDetails)
+                    if deleteinActive:
+                        logger.warning(
+                            "Deleting inactive project: %s", currProjectDetails
                         )
-                        results["projects"]["failed"].append(currProject)
+                        try:
+                            if not dryrun:
+                                currProject.delete()
+                            results["projects"]["deleted"].append(currProject)
+                        except Exception as e:
+                            logger.error(
+                                "Error deleting project: %s -> %s",
+                                currProjectDetails,
+                                e,
+                            )
+                            results["projects"]["failed"].append(currProject)
 
             # if org is empty and --delete-empty-org flag is on
             if deleteorgs:
