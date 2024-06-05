@@ -301,7 +301,9 @@ def main(argv):  # pylint: disable=too-many-statements
     }
     # delete functionality
     try:  # pylint: disable=too-many-nested-blocks
-        for currOrg in userOrgs:  # pylint: disable=too-many-nested-blocks
+        for o_count, currOrg in enumerate(
+            userOrgs
+        ):  # pylint: disable=too-many-nested-blocks
 
             # if curr org is in list of orgs to process
             if currOrg.slug not in inputOrgs:
@@ -310,13 +312,26 @@ def main(argv):  # pylint: disable=too-many-statements
                 )
                 continue
 
-            logger.info("Collecting projects for organization: %s", currOrg.url)
+            logger.info(
+                "[%s/%s] Processing projects for organization: %s",
+                o_count + 1,
+                len(userOrgs),
+                currOrg.url,
+            )
             org_projects = currOrg.projects.all()
             logger.info("%s has %s projects", currOrg.url, len(org_projects))
 
             # cycle through all projects in current org and delete projects that match filter
             for count, currProject in enumerate(org_projects):
-                logger.debug("[%s/%s] - %s", count + 1, len(org_projects), currOrg.url)
+                logger.debug(
+                    "Org: [%s/%s] - Project: [%s/%s] - %s",
+                    o_count + 1,
+                    len(userOrgs),
+                    count + 1,
+                    len(org_projects),
+                    currOrg.url,
+                )
+                logger.debug(currProject)
 
                 # variables which determine whether project matches criteria to delete, if criteria is empty they will be defined as true
                 scaTypeMatch = False
