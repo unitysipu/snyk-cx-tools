@@ -341,6 +341,7 @@ def main(argv):  # pylint: disable=too-many-statements
                 nameMatch = True
                 isActive = currProject.isMonitored
                 readOnly = currProject.readOnly
+                currProjectProductType = convertProjectTypeToProduct(currProject.type)
 
                 if readOnly:
                     logger.info(
@@ -348,9 +349,20 @@ def main(argv):  # pylint: disable=too-many-statements
                         currProject.name,
                         currProject.type,
                         currProject.origin,
-                        convertProjectTypeToProduct(currProject.type),
+                        currProjectProductType,
                     )
                     results["projects"]["skipped"].append(currProject)
+                    continue
+
+                if currProjectProductType == "unknown":
+                    logger.error(
+                        "Not processing unknown project type: %s, Type: %s, Origin: %s, Product: %s",
+                        currProject.name,
+                        currProject.type,
+                        currProject.origin,
+                        currProjectProductType,
+                    )
+                    results["projects"]["failed"].append(currProject)
                     continue
 
                 # dateMatch validation
@@ -385,8 +397,6 @@ def main(argv):  # pylint: disable=too-many-statements
                     originMatch = True
 
                 # if producttypes are not declared or curr project product matches filter criteria then return true
-                currProjectProductType = convertProjectTypeToProduct(currProject.type)
-
                 if (currProjectProductType in products) or (
                     currProjectProductType not in product_excludes
                 ):
