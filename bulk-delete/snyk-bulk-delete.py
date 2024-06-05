@@ -232,7 +232,7 @@ def is_project_skipped(filters, project):
     return False
 
 
-def is_org_filtered(org, filters):
+def is_org_skipped(org, filters):
     if org.slug in filters["org-excludes"]:
         logger.warning(
             "Organization skipped, %s in excludes %s",
@@ -356,13 +356,14 @@ def main(argv):  # pylint: disable=too-many-statements
 
     results = {
         "projects": {"deactivated": [], "deleted": [], "failed": [], "skipped": []},
-        "orgs": {"deleted": [], "failed": []},
+        "orgs": {"deleted": [], "failed": [], "skipped": []},
     }
     try:  # pylint: disable=too-many-nested-blocks
         for o_count, currOrg in enumerate(userOrgs):
 
             # if curr org is in list of orgs to process
-            if is_org_filtered(currOrg, filters):
+            if is_org_skipped(currOrg, filters):
+                results["orgs"]["skipped"].append(currOrg)
                 continue
 
             logger.info(
